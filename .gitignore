@@ -1,0 +1,12 @@
+# macOS
+.DS_Store
+
+# PyInstaller 編譯輸出
+build/
+source/build/
+source/dist/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo

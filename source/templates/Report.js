@@ -47,4 +47,5 @@ function openSheet(evt, sheetName) {
     // 3. 顯示目前點擊的 sheet 並加上 active class
     document.getElementById(sheetName).style.display = "block";
     evt.currentTarget.className += " active";
+    evt.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
 }

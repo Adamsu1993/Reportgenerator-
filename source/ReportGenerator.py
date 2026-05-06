@@ -48,24 +48,63 @@ try:
     except Exception:
         dirimg_result = []
 
-    # --- [新增] 讀取分類設定 (從 templates/Category.json) ---
+    # --- 讀取分類設定 ---
     category_map = {}
     category_config = {}
-    try:
-        category_file = os.path.join(template_src_dir, 'Category.json')
-        if os.path.exists(category_file):
+
+    sections_file = os.path.join(template_src_dir, 'TestCaseList_BySections.txt')
+    category_file = os.path.join(template_src_dir, 'Category.json')
+
+    if os.path.exists(sections_file):
+        try:
+            def extract_section_map(sections, ordered_names):
+                result = {}
+                for section in sections:
+                    sname = section.get('SectionName', 'Others')
+                    cases = section.get('mCases', [])
+                    subsections = section.get('mSections', [])
+                    if cases:
+                        if sname not in ordered_names:
+                            ordered_names.append(sname)
+                        for case in cases:
+                            try:
+                                result[int(case['ID'])] = sname
+                            except Exception:
+                                pass
+                    if subsections:
+                        result.update(extract_section_map(subsections, ordered_names))
+                return result
+
+            for enc in ['utf-8-sig', 'cp1252', 'latin-1']:
+                try:
+                    with open(sections_file, 'r', encoding=enc) as f:
+                        sections_data = json.load(f)
+                    break
+                except (UnicodeDecodeError, ValueError):
+                    continue
+
+            ordered_names = []
+            category_map = extract_section_map(sections_data, ordered_names)
+            category_config = {name: [] for name in ordered_names}
+            for cid, sname in category_map.items():
+                category_config[sname].append(cid)
+            print(f"TestCaseList_BySections.txt loaded: {len(ordered_names)} sections, {len(category_map)} cases.")
+        except Exception as e:
+            print(f"Error loading TestCaseList_BySections.txt: {e}. Falling back to Category.json.")
+            category_map = {}
+            category_config = {}
+
+    if not category_map and os.path.exists(category_file):
+        try:
             with open(category_file, 'r', encoding='utf-8') as f:
                 category_config = json.load(f)
-                # 建立反向索引： case_id -> Sheet Name
-                for sheet_name, case_ids in category_config.items():
-                    for cid in case_ids:
-                        category_map[cid] = sheet_name
-            print("Category.json loaded successfully.")
-        else:
-            print("Category.json not found in templates folder. All tests will be in 'Others'.")
-    except Exception as e:
-        print(f"Error loading Category.json: {e}")
-    # ----------------------------------------------------
+            for sheet_name, case_ids in category_config.items():
+                for cid in case_ids:
+                    category_map[cid] = sheet_name
+            print("Category.json loaded as fallback.")
+        except Exception as e:
+            print(f"Error loading Category.json: {e}")
+    # ---------------------------------------------------
 
     # 1. 狀態 ID 對應顯示名稱
     status_info = {
@@ -419,7 +458,7 @@ try:
             html=html+'<input type="checkbox" id='+"'"+item+"'"+' onchange="check_status('+"'"+item+"'"')" checked><label for="'+item+'" style="color:'+status_color[item]+'">'+str(status_amount[item])+item+',</label>'
         else:
             html=html+'<input type="checkbox" id='+"'"+item+"'"+' onchange="check_status('+"'"+item+"'"')"><label for="'+item+'" style="color:'+status_color[item]+'">'+str(status_amount[item])+item+',</label>'
-    html=html+'<br><font><u><b>Auto Test Report</b></u></font><br></div>'
+    html=html+'<br></div>'
     if flag=='i':
         html=html+'<div class="scroll">'
         if test_id_content!="None":

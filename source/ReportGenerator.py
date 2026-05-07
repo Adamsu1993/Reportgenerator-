@@ -53,26 +53,46 @@ try:
     category_config = {}
 
     sections_file = os.path.join(template_src_dir, 'TestCaseList_BySections.txt')
-    category_file = os.path.join(template_src_dir, 'Category.json')
+
+    # 載入自訂父分類設定
+    parent_sections_file = os.path.join(template_src_dir, 'ParentSections.json')
+    parent_sections_list = None
+    if os.path.exists(parent_sections_file):
+        try:
+            with open(parent_sections_file, 'r', encoding='utf-8') as f:
+                parent_sections_list = json.load(f)
+            print(f"ParentSections.json loaded: {len(parent_sections_list)} parent sections.")
+        except Exception as e:
+            print(f"Error loading ParentSections.json: {e}")
 
     if os.path.exists(sections_file):
         try:
-            def extract_section_map(sections, ordered_names):
+            def extract_section_map(sections, ordered_names, parent_sections_list=None, current_parent=None):
                 result = {}
                 for section in sections:
                     sname = section.get('SectionName', 'Others')
                     cases = section.get('mCases', [])
                     subsections = section.get('mSections', [])
+
+                    if parent_sections_list is not None:
+                        if sname in parent_sections_list:
+                            effective_parent = sname
+                        else:
+                            effective_parent = current_parent
+                    else:
+                        effective_parent = sname
+
                     if cases:
-                        if sname not in ordered_names:
-                            ordered_names.append(sname)
+                        label = effective_parent if effective_parent else 'Others'
+                        if label not in ordered_names:
+                            ordered_names.append(label)
                         for case in cases:
                             try:
-                                result[int(case['ID'])] = sname
+                                result[int(case['ID'])] = label
                             except Exception:
                                 pass
                     if subsections:
-                        result.update(extract_section_map(subsections, ordered_names))
+                        result.update(extract_section_map(subsections, ordered_names, parent_sections_list, effective_parent))
                 return result
 
             for enc in ['utf-8-sig', 'cp1252', 'latin-1']:
@@ -84,26 +104,19 @@ try:
                     continue
 
             ordered_names = []
-            category_map = extract_section_map(sections_data, ordered_names)
-            category_config = {name: [] for name in ordered_names}
+            category_map = extract_section_map(sections_data, ordered_names, parent_sections_list)
+            ordered_by_config = parent_sections_list if parent_sections_list else ordered_names
+            category_config = {name: [] for name in ordered_by_config if name in ordered_names}
+            for name in ordered_names:
+                if name not in category_config:
+                    category_config[name] = []
             for cid, sname in category_map.items():
                 category_config[sname].append(cid)
             print(f"TestCaseList_BySections.txt loaded: {len(ordered_names)} sections, {len(category_map)} cases.")
         except Exception as e:
-            print(f"Error loading TestCaseList_BySections.txt: {e}. Falling back to Category.json.")
+            print(f"Error loading TestCaseList_BySections.txt: {e}")
             category_map = {}
             category_config = {}
-
-    if not category_map and os.path.exists(category_file):
-        try:
-            with open(category_file, 'r', encoding='utf-8') as f:
-                category_config = json.load(f)
-            for sheet_name, case_ids in category_config.items():
-                for cid in case_ids:
-                    category_map[cid] = sheet_name
-            print("Category.json loaded as fallback.")
-        except Exception as e:
-            print(f"Error loading Category.json: {e}")
     # ---------------------------------------------------
 
     # 1. 狀態 ID 對應顯示名稱
@@ -221,15 +234,18 @@ try:
 
         with open(get_tests,encoding='utf8') as f:
             data=json.load(f)
+            if 'size' not in data or 'limit' not in data:
+                raise Exception(f"Unexpected API response for get_tests: {data}")
             offset=offset+data['size']
             if data['limit']==data['size']:
                 get_tests_page=get_tests_page+1
             else:
                 get_tests_flag=0
-        
+
         with open(get_results_for_run,encoding='utf8') as f:
             data=json.load(f)
-
+            if 'size' not in data or 'limit' not in data:
+                raise Exception(f"Unexpected API response for get_results_for_run: {data}")
             if data['limit']==data['size']:
                 get_results_for_run_page=get_results_for_run_page+1
             else:

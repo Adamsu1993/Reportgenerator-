@@ -1,0 +1,23 @@
+[
+  "Basic Check",
+  "PS2",
+  "RMI",
+  "PTP",
+  "Usability Test",
+  "PTP System Test",
+  "Product Specific Test",
+  "Google ChromeOS TouchPad",
+  "HLK Standalone Test On Module",
+  "WHCK HLK Test in system",
+  "2nd source PCB validation",
+  "Acer",
+  "Dell",
+  "HP Consumer",
+  "HP Commercial",
+  "Lenovo TBG",
+  "Lenovo LBG",
+  "Fujitsu",
+  "Huawei",
+  "NEC",
+  "ASIC Feature Specific Test"  
+]

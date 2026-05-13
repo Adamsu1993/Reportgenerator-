@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import hashlib
 
 try:
     log=""
@@ -170,7 +171,8 @@ try:
     # 4. 初始化計數器
     status_amount = {name: 0 for name in status_info.values()}
 
-    img_re=r'([!][[][]][^)]+[)])'     
+    img_re=r'([!][[][]][^)]+[)])'
+    img_inline_re=r"src=['\"]index\.php\?/attachments/get/([^'\"]+)['\"]"
 
     LOGIN_URL = 'https://synasdd.testrail.net/index.php?/auth/login/'
 
@@ -324,21 +326,30 @@ try:
             elif key=='title':
                 test_item=item
             elif key=='custom_expected':
-                if item and re.findall(img_re,item):
-                    img_criteria=re.findall(img_re,item)
-                    for one_img in img_criteria:
-                        download_img_id="".join("".join(one_img.split('![](index.php?/attachments/get/')).split(')'))
-                        if flag=='i':
+                if item:
+                    if re.findall(img_re,item):
+                        img_criteria=re.findall(img_re,item)
+                        for one_img in img_criteria:
+                            download_img_id="".join("".join(one_img.split('![](index.php?/attachments/get/')).split(')'))
+                            if flag=='i':
+                                img_num=img_num+1
+                                download_img(one_img,download_img_id+"_"+str(img_num))
+                                test_id_img_criteria.append(download_img_id+"_"+str(img_num))
+                            item="".join(item.split(one_img))
+                    if flag=='i':
+                        for att_id in re.findall(img_inline_re,item):
                             img_num=img_num+1
-                            download_img(one_img,download_img_id+"_"+str(img_num))
-                            test_id_img_criteria.append(download_img_id+"_"+str(img_num))
-                        item="".join(item.split(one_img))
+                            filename="criteria_inline_"+str(img_num)
+                            page.download('https://synasdd.testrail.net/index.php?/attachments/get/'+att_id+'/',imgdirpath,filename)
+                            try:
+                                downloaded=[f for f in os.listdir(imgdirpath) if os.path.splitext(f)[0]==filename]
+                                if downloaded:
+                                    item=re.sub(r"src=['\"]index\.php\?/attachments/get/"+re.escape(att_id)+r"['\"]",f'src="imgs/{downloaded[0]}"',item)
+                            except:
+                                pass
                     criteria=item
                 else:
-                    if item:
-                        criteria=item
-                    else:
-                        criteria=''
+                    criteria=''
             elif key=='custom_external_test':  
                 custom_external_test=item
             else:
@@ -387,7 +398,7 @@ try:
                     test_output[id]=[data['results'][index]]
             elif key=='comment':
                 test_id_img[id]=[]
-                if item==None:  
+                if item==None:
                     note='N/A'
                 else:
                     if re.findall(img_re,item):
@@ -401,6 +412,11 @@ try:
                     else:
                         test_id_img[id]=[]
                         note=item
+                    for att_id in re.findall(img_inline_re,note):
+                        if att_id not in test_id_img[id]:
+                            test_id_img[id]=test_id_img[id]+[att_id]
+                    note=re.sub(r'<img[^>]+src=[\'"]index\.php\?/attachments/get/[^\'">]+[\'"][^>]*/?>','',note)
+                    note=re.sub(r'background-color\s*:\s*[^;"\'>]+;?\s*','',note)
                 test_id_note[id]=note
             elif key=='attachment_ids':
                 for one_img in item:
@@ -433,14 +449,30 @@ try:
                         if pic_data["cassandra_file_id"]==download_img_id or str(pic_data["id"]) == str(download_img_id):
                             name=pic_data["name"]
                             break
-                    name_split=name.split(".")
                     print(name)
-                    filetype=name_split[-1]
-                    name_split.remove(name_split[-1])
-                    if len(name_split)>1:
-                        filename=".".join(name_split)
+                    if name=="":
+                        if re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', str(download_img_id)):
+                            img_num=img_num+1
+                            inline_filename="inline_"+str(img_num)
+                            page.download('https://synasdd.testrail.net/index.php?/attachments/get/'+str(download_img_id)+'/',imgdirpath,inline_filename)
+                            try:
+                                downloaded=[f for f in os.listdir(imgdirpath) if os.path.splitext(f)[0]==inline_filename]
+                                if downloaded:
+                                    ext=os.path.splitext(downloaded[0])[1].lower().strip('.')
+                                    if ext in ['png','jpg','jpeg']:
+                                        img_arr.append(downloaded[0])
+                            except:
+                                pass
+                        else:
+                            log=log+"test id: "+str(key)+" 附件找不到對應名稱 跳過下載\n"
                     else:
-                        filename=name_split[0]
+                        name_split=name.split(".")
+                        filetype=name_split[-1]
+                        name_split.remove(name_split[-1])
+                        if len(name_split)>1:
+                            filename=".".join(name_split)
+                        elif len(name_split)==1:
+                            filename=name_split[0]
                 else:
                     log=log+"test id: "+str(key)+" 檔名抓取失敗 跳過下載\n"
 
@@ -453,6 +485,19 @@ try:
                     print("檔案非圖片將跳過下載")
                     log=log+"id:"+str(key)+" 檔案:"+name+" 非圖片將跳過下載\n"
                     name=""
+        seen_hashes = set()
+        deduped_arr = []
+        for img_file in img_arr:
+            full_path = os.path.join(imgdirpath, img_file)
+            try:
+                with open(full_path, 'rb') as f:
+                    h = hashlib.md5(f.read()).hexdigest()
+                if h not in seen_hashes:
+                    seen_hashes.add(h)
+                    deduped_arr.append(img_file)
+            except:
+                deduped_arr.append(img_file)
+        img_arr = deduped_arr
         try:
             test_id[key]=test_id[key]+[img_arr]
         except Exception as e:

@@ -485,7 +485,7 @@ try:
                     print("檔案非圖片將跳過下載")
                     log=log+"id:"+str(key)+" 檔案:"+name+" 非圖片將跳過下載\n"
                     name=""
-        seen_hashes = set()
+        seen_hashes = {}  # hash -> first filename with that hash
         deduped_arr = []
         for img_file in img_arr:
             full_path = os.path.join(imgdirpath, img_file)
@@ -493,8 +493,21 @@ try:
                 with open(full_path, 'rb') as f:
                     h = hashlib.md5(f.read()).hexdigest()
                 if h not in seen_hashes:
-                    seen_hashes.add(h)
+                    seen_hashes[h] = img_file
                     deduped_arr.append(img_file)
+                else:
+                    existing = seen_hashes[h]
+                    is_new_inline = img_file.startswith('inline_')
+                    is_existing_inline = existing.startswith('inline_')
+                    if is_existing_inline and not is_new_inline:
+                        # 用有意義的附件檔名取代 inline_
+                        idx = deduped_arr.index(existing)
+                        deduped_arr[idx] = img_file
+                        seen_hashes[h] = img_file
+                    elif not is_new_inline and not is_existing_inline:
+                        # 兩個都是正常附件，保留（10 張相同大小的 Jitter 圖等情境）
+                        deduped_arr.append(img_file)
+                    # 新的是 inline_ → 跳過（已被正常附件涵蓋）
             except:
                 deduped_arr.append(img_file)
         img_arr = deduped_arr

@@ -336,17 +336,17 @@ try:
                                 download_img(one_img,download_img_id+"_"+str(img_num))
                                 test_id_img_criteria.append(download_img_id+"_"+str(img_num))
                             item="".join(item.split(one_img))
-                    if flag=='i':
-                        for att_id in re.findall(img_inline_re,item):
-                            img_num=img_num+1
-                            filename="criteria_inline_"+str(img_num)
-                            page.download('https://synasdd.testrail.net/index.php?/attachments/get/'+att_id+'/',imgdirpath,filename)
-                            try:
-                                downloaded=[f for f in os.listdir(imgdirpath) if os.path.splitext(f)[0]==filename]
-                                if downloaded:
-                                    item=re.sub(r"src=['\"]index\.php\?/attachments/get/"+re.escape(att_id)+r"['\"]",f'src="imgs/{downloaded[0]}"',item)
-                            except:
-                                pass
+                    for att_id in re.findall(img_inline_re,item):
+                        img_num=img_num+1
+                        filename="criteria_inline_"+str(img_num)
+                        clean_att_id=att_id.split('#')[0]
+                        page.download('https://synasdd.testrail.net/index.php?/attachments/get/'+clean_att_id+'/',imgdirpath,filename)
+                        try:
+                            downloaded=[f for f in os.listdir(imgdirpath) if os.path.splitext(f)[0]==filename]
+                            if downloaded:
+                                item=re.sub(r"src=['\"]index\.php\?/attachments/get/"+re.escape(att_id)+r"['\"]",f'src="imgs/{downloaded[0]}"',item)
+                        except:
+                            pass
                     criteria=item
                 else:
                     criteria=''

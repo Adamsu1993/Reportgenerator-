@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FW Validation Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:      #f1f5f9;
+  --surface: #ffffff;
+  --border:  #e2e8f0;
+  --border2: #cbd5e1;
+  --accent:  #3b82f6;
+  --pass:    #16a34a;
+  --fail:    #dc2626;
+  --warn:    #d97706;
+  --text:    #1e293b;
+  --muted:   #64748b;
+  --sidebar: 240px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+header {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 0 24px; height: 52px; display: flex; align-items: center;
+  justify-content: space-between; flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo-icon { width: 28px; height: 28px; border-radius: 6px; background: linear-gradient(135deg, #3b82f6, #6366f1); display: flex; align-items: center; justify-content: center; font-size: 14px; }
+.logo-text { font-weight: 700; font-size: 14px; }
+.logo-sub  { font-size: 11px; color: var(--muted); }
+.hdr-right { font-size: 11px; color: var(--muted); text-align: right; line-height: 1.7; }
+.hdr-right strong { color: var(--text); }
+
+.layout { display: flex; flex: 1; overflow: hidden; }
+
+.sidebar {
+  width: var(--sidebar); flex-shrink: 0;
+  background: var(--surface); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.search-wrap { padding: 10px 10px 8px; border-bottom: 1px solid var(--border); }
+.search-box {
+  width: 100%; padding: 6px 10px 6px 30px; border: 1px solid var(--border2);
+  border-radius: 6px; font-size: 12px; color: var(--text); outline: none; background: var(--bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: 9px center;
+}
+.search-box:focus { border-color: var(--accent); }
+.proj-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+.no-result { padding: 20px 12px; color: var(--muted); font-size: 12px; text-align: center; }
+
+.proj-header {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 12px; cursor: pointer; user-select: none;
+  border-left: 3px solid transparent; transition: background 0.1s;
+}
+.proj-header:hover { background: #f8fafc; }
+.proj-header.active { background: #eff6ff; border-left-color: var(--accent); }
+.proj-arrow { font-size: 10px; color: var(--muted); width: 10px; flex-shrink: 0; transition: transform 0.15s; }
+.proj-arrow.open { transform: rotate(90deg); }
+.proj-name { font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.proj-run-count { font-size: 10px; color: var(--muted); margin-left: auto; flex-shrink: 0; }
+
+.ver-list { display: none; }
+.ver-list.open { display: block; }
+.ver-item {
+  padding: 5px 12px 5px 32px; cursor: pointer;
+  font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px;
+  transition: background 0.1s;
+}
+.ver-item:hover { background: #f8fafc; color: var(--text); }
+.ver-item.active { color: var(--accent); font-weight: 600; }
+.ver-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--border2); flex-shrink: 0; }
+.ver-item.active .ver-dot { background: var(--accent); }
+
+.detail { flex: 1; overflow-y: auto; padding: 20px 24px; }
+.placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--muted); gap: 8px; }
+.placeholder .ico { font-size: 32px; }
+
+.sec { margin-bottom: 22px; }
+.sec-label {
+  font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.06em; margin-bottom: 10px;
+  display: flex; align-items: center; gap: 8px;
+}
+.sec-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+.proj-title { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+.proj-desc  { font-size: 12px; color: var(--muted); line-height: 1.8; }
+.proj-desc b { color: var(--text); }
+
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 12px; }
+.kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+.kpi-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 6px; }
+.kpi-val   { font-size: 22px; font-weight: 700; line-height: 1; }
+.kpi-unit  { font-size: 12px; font-weight: 400; }
+.kpi-sub   { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.c-p { color: var(--pass); } .c-f { color: var(--fail); } .c-w { color: var(--warn); } .c-m { color: var(--muted); }
+
+.charts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+.chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.chart-card.full { grid-column: 1 / -1; }
+.chart-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.chart-name { font-size: 13px; font-weight: 600; }
+.chart-spec { font-size: 11px; color: var(--muted); margin-bottom: 12px; }
+.chart-spec b { color: var(--warn); }
+.chart-wrap { position: relative; height: 190px; }
+.badge { padding: 2px 8px; border-radius: 99px; font-size: 10px; font-weight: 700; }
+.b-p { background: #dcfce7; color: var(--pass); } .b-f { background: #fee2e2; color: var(--fail); } .b-n { background: #f1f5f9; color: var(--muted); }
+
+.tbl-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.tbl-title { padding: 12px 16px; font-size: 13px; font-weight: 600; border-bottom: 1px solid var(--border); }
+.tbl-wrap  { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th { padding: 8px 12px; text-align: left; background: #f8fafc; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+td { padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f8fafc; }
+.mono { font-family: 'Courier New', monospace; font-size: 11px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">&#128200;</div>
+    <div>
+      <div class="logo-text">FW Validation Dashboard</div>
+      <div class="logo-sub">Synaptics &middot; Clickpad Performance</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <div>Last updated: <strong id="hd-date">-</strong></div>
+    <div id="hd-total"></div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="search-wrap">
+      <input class="search-box" id="search" type="text" placeholder="Search project..." oninput="filterProjects()">
+    </div>
+    <div class="proj-list" id="proj-list"></div>
+  </aside>
+  <main class="detail" id="detail">
+    <div class="placeholder">
+      <div class="ico">&#128203;</div>
+      <div>Select a project from the left panel</div>
+    </div>
+  </main>
+</div>
+
+<script>
+const REPORT_DATA = /* __INJECT__ */ null;
+
+(function () {
+  const D = REPORT_DATA || { runs: [], tracked_metrics: [], project: {} };
+  const allRuns = D.runs || [];
+  const metrics = D.tracked_metrics || [];
+
+  // Build project map
+  const projMap = {};
+  allRuns.forEach(r => {
+    const proj = (r.tm_number && r.tm_number !== '') ? r.tm_number : ('run_' + r.run_id);
+    if (!projMap[proj]) projMap[proj] = { verMap: {}, allRuns: [] };
+    projMap[proj].allRuns.push(r);
+    const ver = (r.fw_version && r.fw_version !== '') ? r.fw_version : String(r.run_id);
+    const ex  = projMap[proj].verMap[ver];
+    if (!ex || parseInt(r.run_id) > parseInt(ex.run_id))
+      projMap[proj].verMap[ver] = r;
+  });
+  Object.values(projMap).forEach(pd => {
+    pd.allRuns.sort((a, b) => parseInt(a.run_id) - parseInt(b.run_id));
+  });
+
+  // Remove all run_XXXX phantom entries (runs with no TM number extracted)
+  Object.keys(projMap).filter(k => k.startsWith('run_')).forEach(k => delete projMap[k]);
+
+  const projKeys = Object.keys(projMap).sort();
+
+  let charts = [];
+  function destroyCharts() { charts.forEach(c => { try { c.destroy(); } catch(e) {} }); charts = []; }
+
+  let chartQueue = [];
+
+  document.getElementById('hd-date').textContent =
+    new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' });
+  document.getElementById('hd-total').textContent =
+    projKeys.length + ' projects · ' + allRuns.length + ' runs';
+
+  const C = { accent:'#3b82f6', pass:'#16a34a', fail:'#dc2626', warn:'#d97706', grid:'rgba(0,0,0,0.05)', text:'#64748b' };
+  Chart.defaults.color = C.text;
+  Chart.defaults.font.family = "'Segoe UI', system-ui, sans-serif";
+  Chart.defaults.font.size = 11;
+
+  // ── Helpers ──
+  function getVerKeys(proj) { return Object.keys(projMap[proj].verMap).sort(); }
+  function getVerRuns(proj) { return getVerKeys(proj).map(v => projMap[proj].verMap[v]); }
+  function getAllR(proj)    { return projMap[proj].allRuns; }
+
+  function makeRunLabels(runs) {
+    const cnt = {}, seq = {};
+    runs.forEach(r => { const v = r.fw_version || String(r.run_id); cnt[v] = (cnt[v]||0)+1; });
+    return runs.map(r => {
+      const v = r.fw_version || String(r.run_id);
+      if (cnt[v] > 1) { seq[v] = (seq[v]||0)+1; return v + '#' + seq[v]; }
+      return v;
+    });
+  }
+
+  function metricVals(runs, m) {
+    return runs.map(r => {
+      const res = (r.results||[]).find(x => x.case_id === m.case_id);
+      return (res && res.value !== null && res.value !== undefined) ? res.value : null;
+    });
+  }
+
+  function ptColor(v, m) {
+    if (v === null) return '#94a3b8';
+    return (m.spec_dir === 'max' ? v <= m.spec_val : v >= m.spec_val) ? C.pass : C.fail;
+  }
+
+  // ── Chart queue (deferred until DOM is ready) ──
+  function queueLineChart(id, labels, runs, m) {
+    chartQueue.push(() => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const vals = metricVals(runs, m);
+      charts.push(new Chart(el, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: m.title, data: vals,
+              borderColor: C.accent, backgroundColor: 'rgba(59,130,246,0.07)',
+              pointBackgroundColor: vals.map(v => ptColor(v, m)),
+              pointRadius: 5, pointHoverRadius: 7, borderWidth: 2,
+              fill: true, tension: 0.35, spanGaps: true
+            },
+            {
+              label: 'Spec', data: Array(runs.length).fill(m.spec_val),
+              borderColor: C.warn, borderDash: [5,3], borderWidth: 1.5, pointRadius: 0, fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: ctx => ' ' + (ctx.parsed.y !== null ? ctx.parsed.y : 'N/A') + ' ' + m.unit } }
+          },
+          scales: {
+            x: { grid: { color: C.grid } },
+            y: { grid: { color: C.grid }, ticks: { callback: v => v + m.unit } }
+          }
+        }
+      }));
+    });
+  }
+
+  function queuePRChart(id, labels, runs) {
+    chartQueue.push(() => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const prs = runs.map(r => r.total_tests ? Math.round(r.passed / r.total_tests * 100) : 0);
+      charts.push(new Chart(el, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            data: prs,
+            backgroundColor: prs.map(v => v >= 90 ? 'rgba(22,163,74,0.2)' : 'rgba(217,119,6,0.2)'),
+            borderColor:      prs.map(v => v >= 90 ? C.pass : C.warn),
+            borderWidth: 1.5, borderRadius: 4
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + ctx.parsed.y + '%' } } },
+          scales: { x: { grid:{color:C.grid} }, y: { min:0, max:100, grid:{color:C.grid}, ticks:{callback:v=>v+'%'} } }
+        }
+      }));
+    });
+  }
+
+  function flushCharts() {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      chartQueue.forEach(fn => { try { fn(); } catch(e) { console.warn('Chart error:', e); } });
+      chartQueue = [];
+    }));
+  }
+
+  // ── DOM builders ──
+  let _seq = 0;
+  function uid() { return 'c' + (++_seq); }
+
+  // Metric line charts only (no pass rate) — call for each trend section
+  function buildMetricSection(panel, title, runs, labels) {
+    if (!runs || !runs.length) return;
+    const sec = document.createElement('div');
+    sec.className = 'sec';
+    sec.innerHTML = '<div class="sec-label">' + title + '</div>';
+    const grid = document.createElement('div');
+    grid.className = 'charts-grid';
+
+    metrics.forEach(m => {
+      const vals = metricVals(runs, m);
+      const lv   = vals[vals.length - 1] ?? null;
+      const ok   = lv !== null ? (m.spec_dir === 'max' ? lv <= m.spec_val : lv >= m.spec_val) : null;
+      const cid  = uid();
+      const card = document.createElement('div');
+      card.className = 'chart-card';
+      card.innerHTML =
+        '<div class="chart-head">' +
+          '<div class="chart-name">' + m.title + '</div>' +
+          '<span class="badge ' + (ok===null?'b-n':ok?'b-p':'b-f') + '">' + (ok===null?'N/A':ok?'PASS':'FAIL') + '</span>' +
+        '</div>' +
+        '<div class="chart-spec">Spec: <b>' + m.spec + ' ' + m.unit + '</b></div>' +
+        '<div class="chart-wrap"><canvas id="' + cid + '"></canvas></div>';
+      grid.appendChild(card);
+      queueLineChart(cid, labels, runs, m);
+    });
+
+    sec.appendChild(grid);
+    panel.appendChild(sec);
+  }
+
+  // Single pass rate chart (shown once, using all runs)
+  function buildPassRateSection(panel, runs, labels) {
+    if (!runs || !runs.length) return;
+    const sec = document.createElement('div');
+    sec.className = 'sec';
+    sec.innerHTML = '<div class="sec-label">Pass Rate</div>';
+    const card = document.createElement('div');
+    card.className = 'chart-card';
+    const pid = uid();
+    card.innerHTML =
+      '<div class="chart-head"><div class="chart-name">Pass Rate per Run</div></div>' +
+      '<div class="chart-spec">Passed / Total tests per run</div>' +
+      '<div class="chart-wrap" style="height:140px"><canvas id="' + pid + '"></canvas></div>';
+    sec.appendChild(card);
+    panel.appendChild(sec);
+    queuePRChart(pid, labels, runs);
+  }
+
+  function buildRunTable(panel, runs, title) {
+    if (!runs || !runs.length) return;
+    const sec = document.createElement('div');
+    sec.className = 'sec';
+    sec.innerHTML = '<div class="sec-label">' + title + '</div>';
+    const tblCard = document.createElement('div');
+    tblCard.className = 'tbl-card';
+
+    const mCols = metrics.map(m =>
+      '<th>' + m.title + '<br><span style="font-weight:400;color:var(--warn)">' + m.spec + ' ' + m.unit + '</span></th>'
+    ).join('');
+
+    let tbody = '';
+    runs.forEach(r => {
+      const pr  = r.total_tests ? Math.round(r.passed / r.total_tests * 100) : null;
+      const prC = pr === null ? 'var(--muted)' : pr >= 90 ? 'var(--pass)' : 'var(--warn)';
+      const mCells = metrics.map(m => {
+        const res = (r.results||[]).find(x => x.case_id === m.case_id);
+        const v   = res && res.value !== null ? res.value : null;
+        const ok  = v !== null ? (m.spec_dir==='max' ? v<=m.spec_val : v>=m.spec_val) : null;
+        const col = ok === null ? 'var(--muted)' : ok ? 'var(--pass)' : 'var(--fail)';
+        return '<td class="mono" style="color:' + col + ';font-weight:' + (ok!==null?'600':'400') + '">' + (v!==null?v+m.unit:'—') + '</td>';
+      }).join('');
+      tbody +=
+        '<tr>' +
+        '<td class="mono">' + r.run_id + '</td>' +
+        '<td class="mono" style="font-weight:600">' + (r.fw_version||'—') + '</td>' +
+        '<td class="mono">' + (r.pr_number||'—') + '</td>' +
+        '<td>' + (r.date||'—') + '</td>' +
+        '<td class="mono" style="color:' + prC + ';font-weight:600">' + (pr!==null ? r.passed+'/'+r.total_tests : '—') + '</td>' +
+        mCells + '</tr>';
+    });
+
+    tblCard.innerHTML =
+      '<div class="tbl-title">' + title + '</div>' +
+      '<div class="tbl-wrap"><table>' +
+      '<thead><tr><th>Run ID</th><th>FW</th><th>PR</th><th>Date</th><th>Pass/Total</th>' + mCols + '</tr></thead>' +
+      '<tbody>' + tbody + '</tbody></table></div>';
+    sec.appendChild(tblCard);
+    panel.appendChild(sec);
+  }
+
+  // ── Render ──
+  let currentProj = null, currentVer = null;
+
+  function renderDetail(proj, ver) {
+    destroyCharts();
+    chartQueue = [];
+    const panel = document.getElementById('detail');
+    panel.innerHTML = '';
+
+    const verKeys = getVerKeys(proj);
+    const verRuns = getVerRuns(proj);
+    const allR    = getAllR(proj);
+    const latest  = verRuns[verRuns.length - 1] || {};
+
+    // Info
+    const titSec = document.createElement('div');
+    titSec.className = 'sec';
+    titSec.innerHTML =
+      '<div class="proj-title">' + proj + (ver ? ' &nbsp;<span style="font-size:13px;color:var(--accent)">· ' + ver + '</span>' : '') + '</div>' +
+      '<div class="proj-desc">' +
+      (latest.fw_version ? '<b>FW</b> ' + latest.fw_version + ' &nbsp;' : '') +
+      (latest.pr_number  ? '<b>PR</b> ' + latest.pr_number  + ' &nbsp;' : '') +
+      (latest.jira       ? '<b>JIRA</b> ' + latest.jira     + ' &nbsp;' : '') +
+      (latest.asic       ? '<b>ASIC</b> ' + latest.asic     + ' &nbsp;' : '') +
+      (latest.model      ? '<b>Model</b> ' + latest.model              : '') +
+      '</div>';
+    panel.appendChild(titSec);
+
+    // KPI
+    const kpiSec = document.createElement('div');
+    kpiSec.className = 'sec';
+    kpiSec.innerHTML = '<div class="sec-label">Latest (' + (latest.fw_version || latest.run_id || '—') + ')</div>';
+    const kpiRow = document.createElement('div');
+    kpiRow.className = 'kpi-row';
+    const pr = latest.total_tests ? Math.round(latest.passed / latest.total_tests * 100) : null;
+    let kpiHtml =
+      '<div class="kpi-card">' +
+        '<div class="kpi-label">Pass Rate</div>' +
+        '<div class="kpi-val ' + (pr===null?'c-m':pr>=90?'c-p':'c-w') + '">' + (pr!==null?pr:'—') + '<span class="kpi-unit">%</span></div>' +
+        '<div class="kpi-sub">' + (latest.passed||0) + ' / ' + (latest.total_tests||0) + ' tests</div>' +
+      '</div>';
+    metrics.forEach(m => {
+      const res = (latest.results||[]).find(x => x.case_id === m.case_id);
+      const v   = res ? res.value : null;
+      const ok  = v !== null ? (m.spec_dir==='max' ? v<=m.spec_val : v>=m.spec_val) : null;
+      kpiHtml +=
+        '<div class="kpi-card">' +
+          '<div class="kpi-label">' + m.title + '</div>' +
+          '<div class="kpi-val ' + (ok===null?'c-m':ok?'c-p':'c-f') + '">' + (v!==null?v:'—') + '<span class="kpi-unit"> ' + m.unit + '</span></div>' +
+          '<div class="kpi-sub">Spec ' + m.spec + ' ' + m.unit + '</div>' +
+        '</div>';
+    });
+    kpiRow.innerHTML = kpiHtml;
+    kpiSec.appendChild(kpiRow);
+    panel.appendChild(kpiSec);
+
+    if (ver) {
+      // Single version: all retests of that version
+      const filtRuns   = allR.filter(r => (r.fw_version || String(r.run_id)) === ver);
+      const filtLabels = filtRuns.length > 1
+        ? filtRuns.map((_, i) => ver + ' #' + (i + 1))
+        : [ver];
+      buildMetricSection(panel, 'Historical Trend — ' + ver, filtRuns, filtLabels);
+      buildPassRateSection(panel, filtRuns, filtLabels);
+      buildRunTable(panel, filtRuns, ver + ' — Run Detail');
+    } else {
+      // Project: version comparison + all runs history + single pass rate + table
+      buildMetricSection(panel, 'Version Trend (Latest Run per Version)', verRuns, verKeys);
+      const allLabels = makeRunLabels(allR);
+      buildMetricSection(panel, 'All Runs History (incl. Retests)', allR, allLabels);
+      buildPassRateSection(panel, allR, allLabels);
+      buildRunTable(panel, allR, 'All Runs Detail');
+    }
+
+    flushCharts();
+  }
+
+  // ── Sidebar ──
+  function buildSidebar(keys) {
+    const list = document.getElementById('proj-list');
+    list.innerHTML = '';
+    if (!keys.length) { list.innerHTML = '<div class="no-result">No projects found</div>'; return; }
+    keys.forEach(proj => {
+      const pd   = projMap[proj];
+      const vers = getVerKeys(proj);
+      const group = document.createElement('div');
+
+      const hdr = document.createElement('div');
+      hdr.className = 'proj-header' + (proj === currentProj ? ' active' : '');
+      hdr.innerHTML =
+        '<span class="proj-arrow' + (proj === currentProj ? ' open' : '') + '">&#9658;</span>' +
+        '<span class="proj-name" title="' + proj + '">' + proj + '</span>' +
+        '<span class="proj-run-count">' + vers.length + 'v/' + pd.allRuns.length + 'r</span>';
+      hdr.onclick = () => selectProj(proj, hdr, verList);
+      group.appendChild(hdr);
+
+      const verList = document.createElement('div');
+      verList.className = 'ver-list' + (proj === currentProj ? ' open' : '');
+      vers.forEach(ver => {
+        const cnt = pd.allRuns.filter(r => (r.fw_version || String(r.run_id)) === ver).length;
+        const vi  = document.createElement('div');
+        vi.className = 'ver-item' + (proj === currentProj && ver === currentVer ? ' active' : '');
+        vi.innerHTML =
+          '<span class="ver-dot"></span>' + ver +
+          (cnt > 1 ? ' <span style="font-size:10px;color:var(--warn)">x' + cnt + '</span>' : '');
+        vi.onclick = e => { e.stopPropagation(); selectVersion(proj, ver, hdr, verList); };
+        verList.appendChild(vi);
+      });
+      group.appendChild(verList);
+      list.appendChild(group);
+    });
+  }
+
+  function collapseAll() {
+    document.querySelectorAll('.proj-header').forEach(h => {
+      h.classList.remove('active'); h.querySelector('.proj-arrow').classList.remove('open');
+    });
+    document.querySelectorAll('.ver-list').forEach(vl => vl.classList.remove('open'));
+    document.querySelectorAll('.ver-item').forEach(vi => vi.classList.remove('active'));
+  }
+
+  function selectProj(proj, hdr, verList) {
+    const alreadyOpen = proj === currentProj && verList.classList.contains('open');
+    collapseAll();
+    if (!alreadyOpen) {
+      hdr.classList.add('active');
+      hdr.querySelector('.proj-arrow').classList.add('open');
+      verList.classList.add('open');
+      currentProj = proj; currentVer = null;
+      renderDetail(proj, null);
+    } else {
+      currentProj = null; currentVer = null;
+    }
+  }
+
+  function selectVersion(proj, ver, hdr, verList) {
+    collapseAll();
+    hdr.classList.add('active');
+    hdr.querySelector('.proj-arrow').classList.add('open');
+    verList.classList.add('open');
+    const vi = [...verList.querySelectorAll('.ver-item')].find(el => el.textContent.trim().startsWith(ver));
+    if (vi) vi.classList.add('active');
+    currentProj = proj; currentVer = ver;
+    renderDetail(proj, ver);
+  }
+
+  window.filterProjects = function() {
+    const q = document.getElementById('search').value.trim().toLowerCase();
+    buildSidebar(q ? projKeys.filter(k => k.toLowerCase().includes(q)) : projKeys);
+  };
+
+  // Init
+  buildSidebar(projKeys);
+  if (projKeys.length > 0) {
+    requestAnimationFrame(() => {
+      const firstHdr = document.querySelector('.proj-header');
+      const firstVL  = document.querySelector('.ver-list');
+      if (firstHdr && firstVL) selectProj(projKeys[0], firstHdr, firstVL);
+    });
+  }
+})();
+</script>
+</body>
+</html>

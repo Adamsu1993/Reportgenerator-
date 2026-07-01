@@ -1,4 +1,5 @@
 from DrissionPage import SessionPage
+from datetime import date as _date
 import demoji
 import codecs
 import sys
@@ -7,6 +8,9 @@ import os
 import re
 import shutil
 import hashlib
+
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 try:
     log=""
@@ -276,10 +280,10 @@ try:
     run_id_img=[]
     data={}
     replace_dict={r'\r\n':r'\n'}
+    _run_api = listen_json("get_run", None)
+    run_description_raw = (_run_api.get("description") or "")
     if flag=='i':
-        test_id_content=listen_json("get_run",None)["description"]
-        if test_id_content==None:
-            test_id_content="None"
+        test_id_content = run_description_raw if run_description_raw else "None"
 
         if re.findall(img_re,test_id_content):
             img_comment=re.findall(img_re,test_id_content)
@@ -413,8 +417,9 @@ try:
                         test_id_img[id]=[]
                         note=item
                     for att_id in re.findall(img_inline_re,note):
-                        if att_id not in test_id_img[id]:
-                            test_id_img[id]=test_id_img[id]+[att_id]
+                        clean_att_id=att_id.split('#')[0]
+                        if clean_att_id not in test_id_img[id]:
+                            test_id_img[id]=test_id_img[id]+[clean_att_id]
                     note=re.sub(r'<img[^>]+src=[\'"]index\.php\?/attachments/get/[^\'">]+[\'"][^>]*/?>','',note)
                     note=re.sub(r'background-color\s*:\s*[^;"\'>]+;?\s*','',note)
                 test_id_note[id]=note
@@ -485,6 +490,8 @@ try:
                     print("檔案非圖片將跳過下載")
                     log=log+"id:"+str(key)+" 檔案:"+name+" 非圖片將跳過下載\n"
                     name=""
+        def _base_name(f):
+            return re.sub(r'_\d+$', '', os.path.splitext(f)[0])
         seen_hashes = {}  # hash -> first filename with that hash
         deduped_arr = []
         for img_file in img_arr:
@@ -505,9 +512,10 @@ try:
                         deduped_arr[idx] = img_file
                         seen_hashes[h] = img_file
                     elif not is_new_inline and not is_existing_inline:
-                        # 兩個都是正常附件，保留（10 張相同大小的 Jitter 圖等情境）
-                        deduped_arr.append(img_file)
-                    # 新的是 inline_ → 跳過（已被正常附件涵蓋）
+                        # 同 hash 但 basename 不同 → 不同截圖（如 Jitter 不同位置）→ 保留
+                        if _base_name(img_file) != _base_name(existing):
+                            deduped_arr.append(img_file)
+                        # 同 basename → 同一附件重複下載 → 跳過
             except:
                 deduped_arr.append(img_file)
         img_arr = deduped_arr
@@ -590,7 +598,8 @@ try:
         row_html += '</td>'
 
         # Criteria
-        row_html += f'<td style="width:300px;">{item[1]}<br>'
+        criteria_html = re.sub(r'<img([^>]*?)src="(imgs/[^"]+)"([^>]*?)>',r'<a href="\2" target="_blank"><img\1src="\2"\3></a>',item[1])
+        row_html += f'<td style="width:300px;">{criteria_html}<br>'
         if flag == 'i':
             try:
                 for img_id in item[3]:
@@ -604,9 +613,9 @@ try:
         row_html += f'<td style="width:150px; {bg_style}">{status_text}</td>'
 
         # Note
-        row_html += f'<td style="width:600px; {bg_style}">'
+        row_html += f'<td style="width:600px; {bg_style} word-break: break-word; overflow-wrap: break-word;">'
         try:
-            row_html += str(item[4]) + '<br>'
+            row_html += str(item[4]).replace('\r\n', '<br>').replace('\n', '<br>') + '<br>'
         except: pass
         try:
             for img_id in item[5]:
@@ -622,43 +631,37 @@ try:
         sheet_content[current_sheet] += row_html
 
     # 4. 產生 Tab 按鈕 HTML
-    html += '<div class="tab">'
-    first_active = True
-    
     # 決定 Tab 顯示順序：先顯示 Category.json 裡的，最後顯示 Others
     sheet_order = list(category_config.keys())
     if "Others" not in sheet_order:
         sheet_order.append("Others")
-    
+
+    # 合併所有 sheet 內容為 All tab
+    all_content = ''.join(sheet_content.get(s, '') for s in sheet_order)
+
+    html += '<div class="tab">'
+    # All tab 永遠在最前面且預設 active
+    html += '<button class="tablinks active" onclick="openSheet(event, \'All\')">All</button>'
     for sheet_name in sheet_order:
-        # 如果該 Sheet 在 map 裡沒被用到，且不是 Others，是否要隱藏？
-        # 這裡邏輯是：只要 sheet_content 有內容就顯示
         content = sheet_content.get(sheet_name, "")
-        
         if len(content) > 0:
-            active_class = ""
-            if first_active:
-                active_class = " active"
-            
-            html += f'<button class="tablinks{active_class}" onclick="openSheet(event, \'{sheet_name}\')">{sheet_name}</button>'
-            if first_active: first_active = False # 只標記第一個
+            html += f'<button class="tablinks" onclick="openSheet(event, \'{sheet_name}\')">{sheet_name}</button>'
     html += '</div>'
 
     # 5. 產生各分頁的 Table 內容 HTML
-    first_active = True
+    # All tab 預設顯示
+    html += '<div id="All" class="tabcontent" style="display: block;">'
+    html += '<table><tr><th>Test Item</th><th>Criteria</th><th>Result</th><th>Note</th></tr>'
+    html += all_content
+    html += '</table></div>'
     for sheet_name in sheet_order:
         content = sheet_content.get(sheet_name, "")
         if len(content) > 0:
-            display_style = "none"
-            if first_active:
-                display_style = "block"
-                first_active = False
-            
-            html += f'<div id="{sheet_name}" class="tabcontent" style="display: {display_style};">'
+            html += f'<div id="{sheet_name}" class="tabcontent" style="display: none;">'
             html += '<table><tr><th>Test Item</th><th>Criteria</th><th>Result</th><th>Note</th></tr>'
             html += content
             html += '</table></div>'
-    
+
     html += '</div></html>'
 
     # 寫入 HTML 檔案
@@ -685,15 +688,163 @@ try:
         except Exception as copy_err:
             log = log + f"Error copying {file_name}: {str(copy_err)}\n"
 
+    # ─── 【新增】data.json 更新 + 複製報告到共用資料夾 ──────────────────
+    config_path = os.path.join(base_path, 'config.json')
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, encoding='utf8') as f:
+                config = json.load(f)
+
+            shared_folder    = config.get('shared_folder', {})
+            tracked_case_ids = config.get('tracked_case_ids', [])
+            cfg_metrics      = config.get('tracked_metrics', [])
+
+            def _extract_value_unit(html, unit_hint=''):
+                text = ' '.join(re.sub(r'<[^>]+>', '', str(html)).split())
+                if unit_hint:
+                    m = re.search(r'(\d+\.?\d*)\s*' + re.escape(unit_hint), text, re.IGNORECASE)
+                    if m:
+                        return float(m.group(1)), unit_hint
+                m = re.search(r'(\d+\.?\d*)\s*([a-zA-Z%]+)', text)
+                if m:
+                    return float(m.group(1)), m.group(2)
+                return None, ''
+
+            def _parse_run_desc(desc):
+                info = {}
+                if not desc:
+                    return info
+                text = re.sub(r'<[^>]+>', '', desc)
+                m = re.search(r'(HQA-\d+)', text)
+                if m: info['jira'] = m.group(1)
+                m = re.search(r'(TM-[A-Z0-9-]+)', text)
+                if m: info['tm_number'] = m.group(1)
+                m = re.search(r'(PR\d+)', text)
+                if m: info['pr_number'] = m.group(1)
+                m = re.search(r'\((v[\d.]+)\)', text)
+                if m: info['fw_version'] = m.group(1)
+                m = re.search(r'\(([A-Z]+\d+)_([^_]+)_([^\s(]+)', text)
+                if m:
+                    info['asic']     = m.group(1)
+                    info['protocol'] = m.group(2)
+                    info['model']    = m.group(3)
+                return info
+
+            meta = _parse_run_desc(run_description_raw)
+
+            # 抽取追蹤測項結果
+            tracked_results = []
+            for tid, cid in test_id_to_case_id.items():
+                if cid in tracked_case_ids and tid in test_id:
+                    t          = test_id[tid]
+                    title      = t[0] if len(t) > 0 else ''
+                    status_str = t[2] if len(t) > 2 else ''
+                    note_html  = t[4] if len(t) > 4 else ''
+                    raw_text   = ' '.join(re.sub(r'<[^>]+>', '', str(note_html)).split())
+                    metric_def = next((md for md in cfg_metrics if md.get('case_id') == cid), {})
+                    unit_hint  = metric_def.get('unit', '')
+                    value, unit = _extract_value_unit(note_html, unit_hint)
+                    tracked_results.append({
+                        'case_id':     cid,
+                        'title':       title,
+                        'status':      status_str.lower(),
+                        'value':       value,
+                        'unit':        unit,
+                        'raw_comment': raw_text
+                    })
+
+            # 測試統計
+            new_run = {
+                'run_id':      str(run_id),
+                'fw_version':  meta.get('fw_version', ''),
+                'pr_number':   meta.get('pr_number', ''),
+                'tm_number':   meta.get('tm_number', ''),
+                'jira':        meta.get('jira', ''),
+                'asic':        meta.get('asic', ''),
+                'protocol':    meta.get('protocol', ''),
+                'model':       meta.get('model', ''),
+                'date':        str(_date.today()),
+                'tester':      '',
+                'total_tests': sum(status_amount.values()),
+                'passed':      status_amount.get('Passed', 0),
+                'failed':      status_amount.get('Failed', 0),
+                'blocked':     status_amount.get('Blocked', 0),
+                'results':     tracked_results
+            }
+
+            # 寫入 data.json
+            dashboard_dir = shared_folder.get('dashboard', '')
+            if dashboard_dir:
+                os.makedirs(dashboard_dir, exist_ok=True)
+                data_json_path = os.path.join(dashboard_dir, 'data.json')
+                if os.path.exists(data_json_path):
+                    with open(data_json_path, encoding='utf8') as f:
+                        data_json = json.load(f)
+                else:
+                    data_json = {
+                        '_schema_version': '1.0',
+                        'project':         {},
+                        'tracked_metrics': [],
+                        'runs':            []
+                    }
+                # 從 config 同步 tracked_metrics 規格定義
+                if cfg_metrics:
+                    data_json['tracked_metrics'] = cfg_metrics
+                # 用 run_id dedup：找到舊筆就更新（保留舊有非空欄位），否則 append
+                _existing_idx = next(
+                    (i for i, r in enumerate(data_json['runs']) if str(r.get('run_id')) == str(run_id)),
+                    None
+                )
+                if _existing_idx is not None:
+                    _old = data_json['runs'][_existing_idx]
+                    for _f in ('tm_number', 'fw_version', 'pr_number', 'jira', 'asic', 'protocol', 'model'):
+                        if not new_run.get(_f) and _old.get(_f):
+                            new_run[_f] = _old[_f]
+                    data_json['runs'][_existing_idx] = new_run
+                else:
+                    data_json['runs'].append(new_run)
+                with open(data_json_path, 'w', encoding='utf8') as f:
+                    json.dump(data_json, f, ensure_ascii=False, indent=2)
+                print(f"data.json updated: {data_json_path}")
+
+                # 注入 data.json 到 dashboard.html 並輸出到 Dashboard 資料夾
+                dashboard_template = os.path.join(template_src_dir, 'dashboard.html')
+                if os.path.exists(dashboard_template):
+                    with open(dashboard_template, encoding='utf8') as f:
+                        dash_html = f.read()
+                    dash_html = dash_html.replace(
+                        '/* __INJECT__ */ null',
+                        json.dumps(data_json, ensure_ascii=False),
+                        1
+                    )
+                    with open(os.path.join(dashboard_dir, 'dashboard.html'), 'w', encoding='utf8') as f:
+                        f.write(dash_html)
+                    print(f"dashboard.html updated: {dashboard_dir}")
+
+            # 複製報告到共用資料夾
+            reports_dir = shared_folder.get('reports', '')
+            if reports_dir:
+                os.makedirs(reports_dir, exist_ok=True)
+                report_filename = f"{run_id}_{report_type}_Report.html"
+                report_src = os.path.join(base_path, str(run_id), report_type, report_filename)
+                if os.path.exists(report_src):
+                    shutil.copy(report_src, os.path.join(reports_dir, report_filename))
+                    print(f"Report copied to: {reports_dir}")
+
+        except Exception as cfg_err:
+            log = log + f"data.json/共用資料夾更新失敗: {str(cfg_err)}\n"
+            print(f"data.json update skipped: {cfg_err}")
+    # ─────────────────────────────────────────────────────────────────────
+
     if len(log)!=0:
-        f = open(str(run_id)+"/"+report_type+"/log.txt","w") 
+        f = open(str(run_id)+"/"+report_type+"/log.txt","w", encoding='utf-8')
         f.write(log)
         f.close()
 except Exception as e:
     log=log+f"Exception error on {e.__traceback__.tb_lineno} line\n"
     log=log+str(e)+"\n"
     try:
-        f = open(str(run_id)+"/"+report_type+"/log.txt","w") 
+        f = open(str(run_id)+"/"+report_type+"/log.txt","w", encoding='utf-8')
         f.write(log)
         f.close()
     except:
